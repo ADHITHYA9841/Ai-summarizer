@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Summarizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .loader {
+            border-top-color: #4f46e5;
+            -webkit-animation: spin 1s linear infinite;
+            animation: spin 1s linear infinite;
+            border-radius: 50%;
+            border-width: 4px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .flash-error {
+            animation: flash-red 0.7s ease-in-out;
+        }
+        @keyframes flash-red {
+            0%, 100% { border-color: #d1d5db; } /* gray-300 */
+            50% { border-color: #ef4444; } /* red-500 */
+        }
+        
+        .tab-btn.active {
+            border-color: #4f46e5;
+            color: #4f46e5;
+            background-color: #eef2ff;
+        }
+
+        
+        #content-pdf.dark-theme {
+            background-color: #1e1e1e;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            border: 1px solid #333;
+        }
+        #content-pdf.dark-theme h2 {
+            color: #0d6efd;
+            font-weight: bold;
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        #pdf-input-dark {
+            background-color: #2a2a2a;
+            color: white;
+            border: 1px solid #555;
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+        }
+        #pdf-input-dark::file-selector-button {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            margin-right: 1rem;
+        }
+        #summarize-pdf-btn-dark {
+            background-color: #0d6efd;
+            border: none;
+            color: white;
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            margin-top: 1rem;
+            transition: background-color 0.2s;
+        }
+        #summarize-pdf-btn-dark:hover {
+            background-color: #0b5ed7;
+        }
+        #pdf-summary-output {
+            background-color: #2a2a2a;
+            color: white;
+            border: 1px solid #555;
+            width: 100%;
+            min-height: 200px;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            font-family: monospace;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl bg-white rounded-xl shadow-lg p-6 md:p-8 space-y-6">
+        
+        <div class="text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">AI-Powered Summarizer</h1>
+            <p class="text-gray-500 mt-2">Get instant summaries from meeting transcripts or PDF documents.</p>
+        </div>
+
+        
+        <div class="border-b border-gray-200">
+            <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+                <button id="tab-meeting" class="tab-btn active whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm">
+                    Meeting Transcript
+                </button>
+                <button id="tab-pdf" class="tab-btn text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm border-transparent">
+                    PDF Document
+                </button>
+            </nav>
+        </div>
+
+        
+        <div>
+            
+            <div id="content-meeting" class="tab-content space-y-4">
+                <label for="transcript" class="block text-lg font-semibold text-gray-700">Meeting Transcript</label>
+                <textarea id="transcript" rows="12" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200" placeholder="Paste your raw meeting transcript here..."></textarea>
+                <p id="input-error" class="text-red-600 text-sm mt-1 hidden">Please paste a transcript before analyzing.</p>
+                <button id="analyzeBtn" class="w-full bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 transition-transform transform hover:scale-105 duration-300 ease-in-out disabled:bg-indigo-400 disabled:cursor-not-allowed">
+                    Analyze Transcript
+                </button>
+            </div>
+
+            <div id="content-pdf" class="tab-content hidden space-y-4">
+                 <div class="dark-theme">
+                    <h2>PDF Summarizer using Gemini</h2>
+                    <input id="pdf-input-dark" type="file" accept="application/pdf" />
+                    <button id="summarize-pdf-btn-dark">Summarize</button>
+                 </div>
+            </div>
+        </div>
+
+        
+        <div class="space-y-4 pt-6">
+            <h2 id="results-title" class="text-2xl font-semibold text-gray-800">Results</h2>
+            <div id="loadingIndicator" class="hidden text-center my-6">
+                <div class="inline-block loader h-12 w-12"></div>
+                <p class="mt-2 text-gray-600">Analyzing... this may take a moment.</p>
+            </div>
+            <div id="api-error-message" class="hidden p-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert"></div>
+            
+        
+            <div id="results-container">
+                
+                <textarea id="pdf-summary-output" class="hidden" readonly>Your PDF summary will appear here...</textarea>
+                
+                
+                <div id="structured-results" class="space-y-6">
+                     <div id="summarySection" class="p-6 bg-indigo-50 rounded-xl border border-indigo-200">
+                        <h3 class="text-xl font-bold mb-3 text-gray-800">Summary</h3>
+                        <p id="summary" class="text-gray-700 leading-relaxed"></p>
+                    </div>
+                    <div id="decisionsSection" class="p-6 bg-green-50 rounded-xl border border-green-200">
+                        <h3 class="text-xl font-bold mb-3 text-gray-800">Key Decisions</h3>
+                        <ul id="keyDecisions" class="list-disc list-inside space-y-2 text-gray-700"></ul>
+                    </div>
+                    <div id="actionsSection" class="p-6 bg-yellow-50 rounded-xl border border-yellow-200">
+                        <h3 class="text-xl font-bold mb-3 text-gray-800">Action Items</h3>
+                        <div id="actionItems" class="space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+
+       
+        const tabMeeting = document.getElementById('tab-meeting');
+        const tabPdf = document.getElementById('tab-pdf');
+        const contentMeeting = document.getElementById('content-meeting');
+        const contentPdf = document.getElementById('content-pdf');
+        const mainContainer = document.querySelector('.w-full.max-w-4xl');
+        const resultsTitle = document.getElementById('results-title');
+
+        
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const transcriptInput = document.getElementById('transcript');
+        const inputErrorEl = document.getElementById('input-error');
+        
+        
+        const pdfInput = document.getElementById('pdf-input-dark');
+        const summarizePdfBtn = document.getElementById('summarize-pdf-btn-dark');
+
+        
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const apiErrorMessageDiv = document.getElementById('api-error-message');
+        const resultsContainer = document.getElementById('results-container');
+        const pdfSummaryOutput = document.getElementById('pdf-summary-output');
+        const structuredResultsDiv = document.getElementById('structured-results');
+        const summaryEl = document.getElementById('summary');
+        const keyDecisionsEl = document.getElementById('keyDecisions');
+        const actionItemsEl = document.getElementById('actionItems');
+
+        tabMeeting.addEventListener('click', () => switchTab('meeting'));
+        tabPdf.addEventListener('click', () => switchTab('pdf'));
+
+        function switchTab(tab) {
+            
+            apiErrorMessageDiv.classList.add('hidden');
+
+            if (tab === 'meeting') {
+                tabMeeting.classList.add('active');
+                tabPdf.classList.remove('active');
+                contentMeeting.classList.remove('hidden');
+                contentPdf.classList.add('hidden');
+                
+                
+                structuredResultsDiv.classList.remove('hidden');
+                pdfSummaryOutput.classList.add('hidden');
+
+                
+                mainContainer.style.backgroundColor = 'white';
+                resultsTitle.style.color = '#1f2937'; 
+
+            } else { 
+                tabMeeting.classList.remove('active');
+                tabPdf.classList.add('active');
+                contentMeeting.classList.add('hidden');
+                contentPdf.classList.remove('hidden');
+                contentPdf.classList.add('dark-theme');
+
+                
+                structuredResultsDiv.classList.add('hidden');
+                pdfSummaryOutput.classList.remove('hidden');
+                
+               
+                mainContainer.style.backgroundColor = '#121212';
+                resultsTitle.style.color = '#f8f9fa';
+            }
+        }
+
+        
+        analyzeBtn.addEventListener('click', handleMeetingSummary);
+        summarizePdfBtn.addEventListener('click', handlePdfSummary);
+
+      
+
+        
+        async function handleMeetingSummary() {
+            const transcript = transcriptInput.value.trim();
+            if (!transcript) {
+                inputErrorEl.classList.remove('hidden');
+                transcriptInput.classList.add('flash-error');
+                setTimeout(() => transcriptInput.classList.remove('flash-error'), 700);
+                return;
+            }
+            inputErrorEl.classList.add('hidden');
+
+            const prompt = `
+                You are an expert meeting assistant. Analyze the following meeting transcript. Your task is to return a clean, well-structured JSON object with three specific keys:
+                1. "summary": A concise paragraph summarizing the meeting's purpose and key outcomes.
+                2. "key_decisions": An array of strings, where each string is a key decision made.
+                3. "action_items": An array of objects, where each object has two keys: "owner" (the person assigned) and "task" (the specific action they must take).
+                Do not add any introductory text or explanations outside of the JSON object.
+                The transcript is below:
+                ---
+                ${transcript}`;
+
+            showLoading(true, 'analyzeBtn', 'Analyzing...');
+            try {
+                const result = await callGeminiApi(prompt, true);
+                displayStructuredResults(result);
+            } catch (error) {
+                console.error("Error during API call:", error);
+                showError("An error occurred while analyzing the transcript.");
+            } finally {
+                showLoading(false, 'analyzeBtn', 'Analyze Transcript');
+            }
+        }
+
+       
+        
+        async function handlePdfSummary() {
+            const file = pdfInput.files[0];
+            if (!file) {
+                showError('Please select a PDF file to summarize.');
+                return;
+            }
+
+            showLoading(true, 'summarize-pdf-btn-dark');
+            pdfSummaryOutput.value = 'Extracting text from PDF...';
+
+            try {
+                const pdfText = await extractTextFromPdf(file);
+                if (!pdfText) {
+                   showError('Could not extract text from PDF. It may be empty or image-based.');
+                   showLoading(false, 'summarize-pdf-btn-dark');
+                   return;
+                }
+                pdfSummaryOutput.value = 'Text extracted. Generating summary...';
+                const prompt = `Please provide a concise summary of the following document content:\n\n${pdfText}`;
+                const result = await callGeminiApi(prompt, false); 
+                displayGeneralSummary(result);
+            } catch (error) {
+                console.error('Error processing PDF:', error);
+                showError(`Failed to process PDF: ${error.message}`);
+            } finally {
+                showLoading(false, 'summarize-pdf-btn-dark');
+            }
+        }
+
+        
+        async function callGeminiApi(prompt, expectJson = false, retries = 3, delay = 1000) {
+            const apiKey = "YOUR_API_KEY";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {}
+            };
+            if (expectJson) {
+                payload.generationConfig.responseMimeType = "application/json";
+            }
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    
+                    const result = await response.json();
+                    const textContent = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!textContent) throw new Error("Invalid response structure from API.");
+
+                    return expectJson ? JSON.parse(textContent) : textContent;
+
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed. Retrying in ${delay / 1000}s...`, error);
+                    if (i === retries - 1) throw error;
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2; 
+                }
+            }
+        }
+        
+        
+         
+        async function extractTextFromPdf(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                fullText += textContent.items.map(item => item.str).join(' ') + '\n\n';
+            }
+            return fullText;
+        }
+
+       
+
+        function displayStructuredResults(data) {
+            summaryEl.textContent = data.summary || "No summary was generated.";
+            keyDecisionsEl.innerHTML = '';
+            actionItemsEl.innerHTML = '';
+
+            if (data.key_decisions?.length > 0) {
+                data.key_decisions.forEach(decision => {
+                    const li = document.createElement('li');
+                    li.textContent = decision;
+                    keyDecisionsEl.appendChild(li);
+                });
+            } else {
+                keyDecisionsEl.innerHTML = `<li class="text-gray-500">No key decisions were identified.</li>`;
+            }
+
+            if (data.action_items?.length > 0) {
+                data.action_items.forEach(item => {
+                    const actionDiv = document.createElement('div');
+                    actionDiv.className = 'flex items-start p-3 bg-white rounded-lg shadow-sm border flex-col sm:flex-row';
+                    actionDiv.innerHTML = `
+                        <span class="font-semibold text-indigo-600 w-full sm:w-1/4 pb-2 sm:pb-0">${item.owner || 'Unassigned'}</span>
+                        <span class="text-gray-800 w-full sm:w-3/4 sm:pl-4">${item.task || 'No task description'}</span>
+                    `;
+                    actionItemsEl.appendChild(actionDiv);
+                });
+            } else {
+                actionItemsEl.innerHTML = `<p class="text-gray-500">No action items were identified.</p>`;
+            }
+        }
+
+        function displayGeneralSummary(text) {
+            pdfSummaryOutput.value = text.trim();
+        }
+
+        function showLoading(isLoading, btnId, text) {
+            loadingIndicator.classList.toggle('hidden', !isLoading);
+            apiErrorMessageDiv.classList.add('hidden');
+            
+            if(btnId) {
+                const btn = document.getElementById(btnId);
+                btn.disabled = isLoading;
+                if(text) btn.textContent = text;
+            }
+        }
+
+        function showError(message) {
+            apiErrorMessageDiv.textContent = message;
+            apiErrorMessageDiv.classList.remove('hidden');
+            if(tabPdf.classList.contains('active')){
+                pdfSummaryOutput.value = 'An error occurred. Please try again.';
+            }
+        }
+        
+       
+        switchTab('meeting');
+
+    </script>
+</body>
+</html>
